@@ -5,6 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Share2, Plus, Search, Edit2, Trash2, X, Star } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 import { useToast } from '@/components/ui/use-toast';
+import phpserver from '@/lib/phpserver';
+import { get } from 'http';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,18 +59,33 @@ const CustomerManagement = () => {
   const [ratingFilter, setRatingFilter] = useState<string>('all');
   const [searchRating, setSearchRating] = useState<string>('all');
   const { toast } = useToast();
-
+  const [carregando, setCarregando] = useState(true);
+  const [oldCustomers, setOldCustomers] = useState(customers);
   // Carregar clientes do localStorage
   useEffect(() => {
-    const storedCustomers = localStorage.getItem('customers');
-    if (storedCustomers) {
-      setCustomers(JSON.parse(storedCustomers));
+    async function syncCustomers() {
+      try {
+        const customers = await phpserver().getClientes();
+        localStorage.setItem('customers', JSON.stringify(customers));
+        setCustomers(customers);
+        setCarregando(false);
+      } catch (e) {
+        console.error('Falha ao carregar clientes', e);
+        setCustomers([]);
+      }
     }
+    syncCustomers();
   }, []);
 
   // Salvar clientes no localStorage
   useEffect(() => {
-    localStorage.setItem('customers', JSON.stringify(customers));
+    async function saveCustomers(customers) {
+      if (carregando) return;
+      await phpserver().updateClientes(customers);
+      localStorage.setItem('customers', JSON.stringify(customers));
+    }
+
+    saveCustomers(customers);
   }, [customers]);
 
   const handleAddCustomer = () => {
@@ -113,14 +130,14 @@ const CustomerManagement = () => {
       return;
     }
 
-    setCustomers(prev => 
-      prev.map(customer => 
-        customer.id === editingCustomer?.id 
+    setCustomers(prev =>
+      prev.map(customer =>
+        customer.id === editingCustomer?.id
           ? { ...newCustomer, phone: newCustomer.phone.replace(/\D/g, '') }
           : customer
       ).sort((a, b) => a.name.localeCompare(b.name))
     );
-    
+
     setEditingCustomer(null);
     setNewCustomer({ id: '', name: '', phone: '', email: '', rating: 0 });
     setEditModalOpen(false);
@@ -144,12 +161,12 @@ const CustomerManagement = () => {
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = searchTerm
       ? customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone.includes(searchTerm) ||
-        (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase()))
+      customer.phone.includes(searchTerm) ||
+      (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase()))
       : true;
 
-    const matchesRating = ratingFilter === 'all' 
-      ? true 
+    const matchesRating = ratingFilter === 'all'
+      ? true
       : customer.rating === parseInt(ratingFilter);
 
     const matchesSearchRating = searchRating === 'all'
@@ -170,16 +187,22 @@ const CustomerManagement = () => {
             className={`${isEditable ? 'cursor-pointer' : 'cursor-default'}`}
           >
             <Star
-              className={`h-5 w-5 ${
-                star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
-              }`}
+              className={`h-5 w-5 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+                }`}
             />
           </button>
         ))}
       </div>
     );
   };
-
+  if (carregando) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen bg-white text-gray-700">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-lg font-semibold">Aguarde um momento...</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
@@ -214,7 +237,7 @@ const CustomerManagement = () => {
           </div>
           <div className="space-y-2">
             <Label>Classificação</Label>
-            {renderStars(newCustomer.rating, true, (rating) => 
+            {renderStars(newCustomer.rating, true, (rating) =>
               setNewCustomer({ ...newCustomer, rating })
             )}
           </div>
@@ -307,8 +330,8 @@ const CustomerManagement = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCustomers.map((customer, index) => (
-                <tr 
-                  key={customer.id} 
+                <tr
+                  key={customer.id}
                   className={`flex flex-col md:table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'}`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap font-medium relative">
@@ -333,9 +356,9 @@ const CustomerManagement = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <a 
-                      href={`https://wa.me/${customer.phone}`} 
-                      target="_blank" 
+                    <a
+                      href={`https://wa.me/${customer.phone}`}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-green-600 hover:text-green-800 flex items-center gap-1"
                     >
@@ -345,7 +368,7 @@ const CustomerManagement = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap md:table-cell">
                     {customer.email ? (
-                      <a 
+                      <a
                         href={`mailto:${customer.email}`}
                         className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
                       >
@@ -420,7 +443,7 @@ const CustomerManagement = () => {
             <div className="grid grid-cols-4 items-center gap-4">
               <Label className="text-right">Classificação</Label>
               <div className="col-span-3">
-                {renderStars(newCustomer.rating, true, (rating) => 
+                {renderStars(newCustomer.rating, true, (rating) =>
                   setNewCustomer({ ...newCustomer, rating })
                 )}
               </div>

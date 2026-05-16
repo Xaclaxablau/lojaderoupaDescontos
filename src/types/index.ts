@@ -13,7 +13,7 @@ export interface Product {
   stock: number;
   featured: boolean;
   on_sale: boolean;
-  showOnHomepage?: boolean;
+  showOnHomepage: boolean;
 }
 
 export interface CartItem extends Product {

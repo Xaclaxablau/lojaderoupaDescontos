@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ImageModal } from './ImageModal';
 
 interface ProductGalleryProps {
   images: string[];
@@ -31,6 +32,7 @@ export const ProductGallery: React.FC<ProductGalleryProps> = ({ images = [], mai
   
   // Estado para armazenar a imagem principal que está sendo exibida
   const [selectedImage, setSelectedImage] = useState<string>(allImages.length > 0 ? allImages[0] : '');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Atualizar a imagem selecionada quando as props mudarem
   useEffect(() => {
@@ -52,8 +54,9 @@ export const ProductGallery: React.FC<ProductGalleryProps> = ({ images = [], mai
         <img
           src={selectedImage}
           alt={`Imagem principal de ${name}`}
-          className="w-full h-auto object-cover rounded-lg shadow-md"
+          className="w-full h-auto object-cover rounded-lg shadow-md cursor-pointer transition-transform hover:scale-[1.02]"
           style={{ maxHeight: '500px' }}
+          onClick={() => setIsModalOpen(true)}
           onError={() => {
             console.error('Erro ao carregar imagem principal:', selectedImage);
             // Se houver erro, tentar próxima imagem
@@ -92,6 +95,14 @@ export const ProductGallery: React.FC<ProductGalleryProps> = ({ images = [], mai
           ))}
         </div>
       )}
+
+      {/* Modal de Imagem */}
+      <ImageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        imageUrl={selectedImage}
+        alt={`Imagem ampliada de ${name}`}
+      />
     </div>
   );
 };

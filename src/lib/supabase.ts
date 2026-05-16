@@ -247,6 +247,7 @@ export const saveProduct = async (product: Product) => {
     // Normalizar booleanos
     processedProduct.featured = !!processedProduct.featured;
     processedProduct.on_sale = !!processedProduct.on_sale;
+    processedProduct.showOnHomepage = !!processedProduct.showOnHomepage;
     
     // Se não houver ID, gerar um UUID
     if (!processedProduct.id) {
@@ -265,7 +266,8 @@ export const saveProduct = async (product: Product) => {
       stock: processedProduct.stock,
       discount: processedProduct.discount,
       featured: processedProduct.featured,
-      on_sale: processedProduct.on_sale
+      on_sale: processedProduct.on_sale,
+      showOnHomepage: processedProduct.showOnHomepage
     }, null, 2));
     
     // SALVAR NO SUPABASE

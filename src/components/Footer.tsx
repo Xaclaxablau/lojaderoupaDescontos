@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-// Importar todos os ícones de um único arquivo para evitar problemas de carregamento
-import { 
-  FaInstagram, 
-  FaFacebookF, 
-  FaWhatsapp, 
-  FaGlobe 
+// Importar ícones do react-icons
+import {
+  FaInstagram,
+  FaFacebookF,
+  FaWhatsapp,
+  FaGlobe
 } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
-
+import { SiTiktok } from 'react-icons/si';
+import { getStoreSettings, resetStoreSettings } from '@/lib/localStorage';
+import phpserver from '@/lib/phpserver';
 // Interface para as configurações da loja
 interface SocialMedia {
   enabled: boolean;
@@ -42,91 +44,51 @@ interface StoreSettings {
   socialMedia: SocialMedia;
 }
 
-// Default settings for the footer part
-const defaultFooterSettings: Pick<StoreSettings, 'footerText' | 'socialMedia'> = {
-  footerText: '© 2025 TACO. Todos os direitos reservados.',
-  socialMedia: {
-    enabled: false,
-    instagram: { enabled: true, url: '#' },
-    facebook: { enabled: true, url: '#' },
-    whatsapp: { enabled: true, url: '#' },
-    tiktok: { enabled: false, url: '#' },
-    twitter: { enabled: false, url: '#' },
-    website: { enabled: false, url: '#' },
-  }
-};
-
-// Helper function for simple deep merging (handles nested objects)
-const deepMerge = (target: any, source: any): any => {
-  const output = { ...target };
-  const isObject = (item: any): boolean => item && typeof item === 'object' && !Array.isArray(item);
-
-  if (isObject(target) && isObject(source)) {
-    Object.keys(source).forEach(key => {
-      const targetValue = target[key];
-      const sourceValue = source[key];
-
-      if (isObject(targetValue) && isObject(sourceValue)) {
-        output[key] = deepMerge(targetValue, sourceValue);
-      } else {
-        output[key] = sourceValue;
-      }
-    });
-    Object.keys(source).forEach(key => {
-      if (!target.hasOwnProperty(key)) {
-        output[key] = source[key];
-      }
-    });
-  }
-
-  return output;
-};
-
 const Footer = () => {
-  const [footerText, setFooterText] = useState(defaultFooterSettings.footerText);
-  const [socialMedia, setSocialMedia] = useState<SocialMedia>(defaultFooterSettings.socialMedia);
+  const [footerText, setFooterText] = useState('');
+  const [socialMedia, setSocialMedia] = useState<SocialMedia | null>(null);
 
   useEffect(() => {
-    // Function to load and merge settings specifically for the footer
-    const loadFooterSettings = () => {
-      let mergedSettings = { ...defaultFooterSettings }; // Start with defaults
-      
-      if (typeof window !== 'undefined') {
-        const storedSettingsJson = localStorage.getItem('storeSettings');
-        if (storedSettingsJson) {
-          try {
-            const storedSettings = JSON.parse(storedSettingsJson);
-            // Selectively merge only the relevant parts (footerText, socialMedia)
-            const relevantStoredSettings = {
-              footerText: storedSettings.footerText,
-              socialMedia: storedSettings.socialMedia,
-            };
-            // Merge stored relevant settings over the defaults
-            mergedSettings = deepMerge(mergedSettings, relevantStoredSettings);
-          } catch (e) {
-            console.error('Failed to parse stored settings for footer, using defaults.', e);
-            // Keep mergedSettings as defaults in case of error
+    // Função para carregar as configurações
+    const loadSettings = () => {
+      try {
+        const carregarSettings = async () => {
+          const dados = await phpserver().getStoreSettings();
+          localStorage.setItem('storeSettings', JSON.stringify(dados));
+          const settings = dados;
+          console.log("Configurações carregadas:", settings.socialMedia);
+          setFooterText(settings.footerText || '');
+          console.log("Configurações carregadas:", settings.footerText);
+          setSocialMedia(settings.socialMedia || null);
+          // Se as redes sociais ainda estiverem nulas, forçar o uso dos valores padrão
+          if (!settings.socialMedia || settings.socialMedia.enabled === undefined) {
+            console.log("Forçando configurações padrão de redes sociais");
+            resetStoreSettings();
           }
-        }
-      }
-      
-      // Update state with the potentially merged settings
-      setFooterText(mergedSettings.footerText || defaultFooterSettings.footerText);
-      setSocialMedia(mergedSettings.socialMedia || defaultFooterSettings.socialMedia);
-    };
-
-    // Load on initial mount
-    loadFooterSettings();
-
-    // Listen for storage changes
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'storeSettings') {
-        loadFooterSettings(); // Reload and merge settings on change
+        };
+        carregarSettings();
+      } catch (error) {
+        console.error('Erro ao carregar configurações do rodapé:', error);
       }
     };
 
+    // Carregar ao montar o componente
+    loadSettings();
+
+    // Escutar por alterações no localStorage
+    const handleStorageChange = () => {
+      loadSettings();
+    };
+
+    // Adicionar evento de armazenamento e evento personalizado
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('storeSettingsUpdated', handleStorageChange);
+
+    // Remover eventos ao desmontar
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('storeSettingsUpdated', handleStorageChange);
+    };
   }, []);
 
   // Tamanho dos ícones
@@ -134,64 +96,86 @@ const Footer = () => {
 
   // Renderizar ícones de redes sociais
   const renderSocialIcons = () => {
-    if (!socialMedia || !socialMedia.enabled) return null;
+    if (!socialMedia) {
+      console.log("Social media não definido");
+      return null;
+    }
+
+    if (!socialMedia.enabled) {
+      console.log("Social media desabilitado");
+      return null;
+    }
+
+    console.log("Renderizando ícones", socialMedia);
 
     return (
-      <div className="flex justify-center space-x-8 mt-4">
-        {socialMedia.instagram.enabled && (
-          <a 
-            href={socialMedia.instagram.url} 
-            target="_blank" 
+      <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mt-4">
+        {socialMedia.instagram?.enabled && (
+          <a
+            href={socialMedia.instagram.url}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-600 hover:text-pink-600 transition-colors"
+            className="text-gray-600 hover:text-pink-600 transition-colors bg-white p-2 rounded-full"
             title="Instagram"
           >
             <FaInstagram size={iconSize} />
           </a>
         )}
-        
-        {socialMedia.facebook.enabled && (
-          <a 
-            href={socialMedia.facebook.url} 
-            target="_blank" 
+
+        {socialMedia.facebook?.enabled && (
+          <a
+            href={socialMedia.facebook.url}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-600 hover:text-blue-600 transition-colors"
+            className="text-gray-600 hover:text-blue-600 transition-colors bg-white p-2 rounded-full"
             title="Facebook"
           >
             <FaFacebookF size={iconSize} />
           </a>
         )}
-        
-        {socialMedia.twitter.enabled && (
-          <a 
-            href={socialMedia.twitter.url} 
-            target="_blank" 
+
+        {socialMedia.twitter?.enabled && (
+          <a
+            href={socialMedia.twitter.url}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-600 hover:text-black transition-colors"
+            className="text-gray-600 hover:text-black transition-colors bg-white p-2 rounded-full"
             title="Twitter/X"
           >
             <FaXTwitter size={iconSize} />
           </a>
         )}
-        
-        {socialMedia.whatsapp.enabled && (
-          <a 
-            href={socialMedia.whatsapp.url} 
-            target="_blank" 
+
+        {socialMedia.tiktok?.enabled && (
+          <a
+            href={socialMedia.tiktok.url}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-600 hover:text-green-500 transition-colors"
+            className="text-gray-600 hover:text-black transition-colors bg-white p-2 rounded-full"
+            title="TikTok"
+          >
+            <SiTiktok size={iconSize} />
+          </a>
+        )}
+
+        {socialMedia.whatsapp?.enabled && (
+          <a
+            href={socialMedia.whatsapp.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-600 hover:text-green-500 transition-colors bg-white p-2 rounded-full"
             title="WhatsApp"
           >
             <FaWhatsapp size={iconSize} />
           </a>
         )}
-        
-        {socialMedia.website.enabled && (
-          <a 
-            href={socialMedia.website.url} 
-            target="_blank" 
+
+        {socialMedia.website?.enabled && (
+          <a
+            href={socialMedia.website.url}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-600 hover:text-teal-500 transition-colors"
+            className="text-gray-600 hover:text-teal-500 transition-colors bg-white p-2 rounded-full"
             title="Website"
           >
             <FaGlobe size={iconSize} />
@@ -205,13 +189,14 @@ const Footer = () => {
     <footer className="bg-gray-100 py-8">
       <div className="container px-4 mx-auto">
         <div className="text-center text-sm text-gray-500">
-          {socialMedia && socialMedia.enabled && (
-            <div className="mb-6">
-              <h4 className="text-base font-semibold mb-3">Siga-nos nas redes sociais</h4>
-              {renderSocialIcons()}
-            </div>
-          )}
-          <p dangerouslySetInnerHTML={{ __html: footerText }} />
+          <div className="mb-6">
+            <h4 className="text-base font-semibold mb-3">Siga-nos nas redes sociais</h4>
+            {renderSocialIcons()}
+          </div>
+          <div className="w-full flex flex-col items-center gap-1 mt-4">
+            <a href="/politica-de-privacidade" className="text-xs text-gray-500 hover:underline mb-1">Política de Privacidade</a>
+            <span className="text-xs text-gray-500">{footerText}</span>
+          </div>
         </div>
       </div>
     </footer>

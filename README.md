@@ -1,73 +1,107 @@
-# Welcome to your Lovable project
+# Loja de Roupas
 
-## Project info
+Este é um projeto de e-commerce para uma loja de roupas, desenvolvido com React, TypeScript e Vite.
 
-**URL**: https://lovable.dev/projects/f399d02a-71f4-4d5f-acc6-d3eb18ef49c4
+## Tecnologias Utilizadas
 
-## How can I edit this code?
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Shadcn/ui
 
-There are several ways of editing your application.
+## Como Executar
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/f399d02a-71f4-4d5f-acc6-d3eb18ef49c4) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+1. Clone o repositório
+2. Instale as dependências:
+```bash
+npm install
+```
+3. Execute o servidor de desenvolvimento:
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Funcionalidades
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- Catálogo de produtos
+- Carrinho de compras
+- Sistema de cupons de desconto
+- Configurações personalizáveis da loja
+- Integração com WhatsApp
+- Página "Quem Somos"
+- Gerenciamento de categorias
+- Configuração de redes sociais
 
-**Use GitHub Codespaces**
+## Estrutura do Projeto
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `/src/components`: Componentes reutilizáveis
+- `/src/contexts`: Contextos do React (Auth, Cart, etc)
+- `/src/pages`: Páginas da aplicação
+- `/src/types`: Definições de tipos TypeScript
+- `/src/lib`: Funções utilitárias
 
-## What technologies are used for this project?
+## Contribuição
 
-This project is built with .
+1. Faça um fork do projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova feature'`)
+4. Push para a branch (`git push origin feature/nova-feature`)
+5. Abra um Pull Request
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# Loja de Roupas - Sistema de Categorias
 
-## How can I deploy this project?
+Este guia explica como utilizar o sistema de categorias e destaques de categorias na loja de roupas.
 
-Simply open [Lovable](https://lovable.dev/projects/f399d02a-71f4-4d5f-acc6-d3eb18ef49c4) and click on Share -> Publish.
+## Gerenciamento de Categorias
 
-## Can I connect a custom domain to my Lovable project?
+### 1. Tipos de Categorias
 
-Yes it is!
+O sistema suporta três tipos de categorias:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- **Categorias Padrão**: Feminino, Masculino, Kids, Calçados, Acessórios, etc.
+- **Links Personalizados**: Categorias adicionadas através do menu "Links do Cabeçalho"
+- **Categorias em Destaque**: Categorias exibidas na seção de destaques da página inicial
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### 2. Como Adicionar Categorias em Destaque
+
+1. Acesse o **Painel de Administração**
+2. Vá para a aba **Configurações**
+3. Clique em **Categorias em Destaque**
+4. Ative a opção "Exibir categorias em destaque"
+5. Clique em **Adicionar Nova Categoria**
+6. Preencha o **Nome da Categoria** - o link será gerado automaticamente
+7. Adicione uma **Imagem da Categoria** (opcional)
+8. Salve as alterações
+
+### 3. Como Adicionar Produtos às Categorias
+
+1. Acesse o **Painel de Administração**
+2. Clique em **Adicionar Produto** ou edite um produto existente
+3. No campo **Categoria**, você verá todas as categorias disponíveis:
+   - Categorias Principais
+   - Links Personalizados
+   - Categorias em Destaque
+4. Selecione a categoria desejada
+5. Salve o produto
+
+## Recursos de Categorias
+
+- **Páginas Automáticas**: Cada categoria gera automaticamente uma página em `/products/[categoria]`
+- **Normalização**: As categorias são normalizadas automaticamente para evitar duplicações
+- **Filtros**: Os produtos podem ser filtrados por categoria em várias páginas
+- **Destaques Visuais**: As categorias em destaque aparecem na página inicial
+
+## Solução de Problemas
+
+Se você não conseguir ver um produto em uma categoria específica:
+
+1. Verifique se a categoria foi escrita corretamente
+2. Verifique se a categoria está ativada nas configurações
+3. Para categorias em destaque, certifique-se de que o link foi gerado corretamente
+
+## Observações Importantes
+
+- **Não modifique manualmente** os links de categorias em destaque - eles são gerados automaticamente
+- As categorias em destaque aparecem tanto no menu de seleção do produto quanto na página inicial
+- Os produtos podem pertencer a múltiplas categorias, mas sua categoria principal determina onde aparecerão primeiro

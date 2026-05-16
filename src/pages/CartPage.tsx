@@ -4,11 +4,12 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import CartItem from '@/components/CartItem';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, ArrowRight, Trash2, ShoppingBag, Truck, CreditCard, Wallet, Landmark, CircleDollarSign, ChevronDown, Smartphone } from 'lucide-react';
+import { ShoppingCart, ArrowRight, Trash2, ShoppingBag, Truck, CreditCard, Wallet, Landmark, CircleDollarSign, ChevronDown, Smartphone, X } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Input } from '@/components/ui/input';
 
 interface PaymentMethodsConfig {
   credit: boolean;
@@ -18,13 +19,25 @@ interface PaymentMethodsConfig {
   other: boolean;
 }
 
+interface StoreSettings {
+  deliveryInfo?: string;
+  showPaymentMethods?: boolean;
+  activePaymentMethods?: PaymentMethodsConfig;
+  storePhone?: string;
+  storeName?: string;
+  enableWhatsappCheckout?: boolean;
+  whatsappNumber?: string;
+  whatsappMessage?: string;
+}
+
 const CartPage = () => {
-  const { cart, clearCart, cartTotal } = useCart();
+  const { cart, clearCart, cartTotal, applyCoupon, removeCoupon, couponCode, couponDiscount } = useCart();
   const navigate = useNavigate();
-  const [deliveryInfo, setDeliveryInfo] = useState<string>('Frete grátis para compras acima de R$ 199,90. Consulte o prazo estimado de entrega informando seu CEP.');
+  const [deliveryInfo, setDeliveryInfo] = useState<string>('Consulte o prazo estimado de entrega informando seu CEP.');
   const [paymentMethod, setPaymentMethod] = useState<string>('credit');
   const [paymentAccordionOpen, setPaymentAccordionOpen] = useState<string>('');
   const [showPaymentMethods, setShowPaymentMethods] = useState<boolean>(true);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>({});
   const [activePaymentMethods, setActivePaymentMethods] = useState<PaymentMethodsConfig>({
     credit: true,
     debit: true,
@@ -32,6 +45,7 @@ const CartPage = () => {
     cash: true,
     other: true
   });
+  const [couponInput, setCouponInput] = useState('');
   
   // Load settings from localStorage
   useEffect(() => {
@@ -39,6 +53,8 @@ const CartPage = () => {
       const storedSettings = localStorage.getItem('storeSettings');
       if (storedSettings) {
         const settings = JSON.parse(storedSettings);
+        setStoreSettings(settings);
+        
         if (settings.deliveryInfo) {
           setDeliveryInfo(settings.deliveryInfo);
         }
@@ -71,7 +87,39 @@ const CartPage = () => {
       alert('Por favor, selecione uma forma de pagamento antes de finalizar a compra.');
       return;
     }
-    alert(`${showPaymentMethods ? `Forma de pagamento selecionada: ${getPaymentMethodName(paymentMethod)}` : 'Processando pagamento...'}\nEsta funcionalidade ainda não está disponível. Obrigado pela compreensão!`);
+    
+    // Verificar se o checkout via WhatsApp está habilitado
+    if (storeSettings.enableWhatsappCheckout && storeSettings.whatsappNumber) {
+      // Preparar mensagem para WhatsApp
+      let message = storeSettings.whatsappMessage || `Olá! Gostaria de finalizar minha compra na ${storeSettings.storeName || 'loja'}.`;
+      
+      // Adicionar informações dos produtos
+      message += "\n\n*Itens do pedido:*\n";
+      cart.forEach((item, index) => {
+        message += `${index + 1}. ${item.name} - ${item.quantity}x R$ ${item.price.toFixed(2)}`;
+        if (item.selectedSize) message += ` - Tamanho: ${item.selectedSize}`;
+        if (item.selectedColor) message += ` - Cor: ${item.selectedColor}`;
+        message += "\n";
+      });
+      
+      // Adicionar informações de valor
+      message += `\n*Subtotal:* R$ ${cartTotal.toFixed(2)}`;
+      message += `\n*Total:* R$ ${cartTotal.toFixed(2)}`;
+      
+      // Adicionar forma de pagamento se selecionada
+      if (showPaymentMethods && paymentMethod) {
+        message += `\n\n*Forma de pagamento:* ${getPaymentMethodName(paymentMethod)}`;
+      }
+      
+      // Codificar a mensagem para URL
+      const encodedMessage = encodeURIComponent(message);
+      
+      // Abrir WhatsApp
+      window.open(`https://wa.me/${storeSettings.whatsappNumber}?text=${encodedMessage}`, '_blank');
+    } else {
+      // Fallback para a mensagem padrão
+      alert(`${showPaymentMethods ? `Forma de pagamento selecionada: ${getPaymentMethodName(paymentMethod)}` : 'Processando pagamento...'}\nEsta funcionalidade ainda não está disponível. Obrigado pela compreensão!`);
+    }
   };
   
   const getPaymentMethodName = (method: string): string => {
@@ -92,6 +140,13 @@ const CartPage = () => {
   
   // Check if there are any active payment methods
   const hasActivePaymentMethods = Object.values(activePaymentMethods).some(value => value);
+  
+  const handleApplyCoupon = () => {
+    if (couponInput.trim()) {
+      applyCoupon(couponInput.trim());
+      setCouponInput('');
+    }
+  };
   
   return (
     <>
@@ -147,21 +202,46 @@ const CartPage = () => {
                       <span className="text-gray-600">Subtotal:</span>
                       <span>R$ {cartTotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Frete:</span>
-                      <span>{cartTotal >= 199.9 ? 'Grátis' : 'R$ 15,00'}</span>
-                    </div>
-                    
-                    {cartTotal < 199.9 && (
-                      <div className="text-sm text-shop-red mt-2">
-                        Falta R$ {(199.9 - cartTotal).toFixed(2)} para frete grátis!
+
+                    {/* Coupon Section */}
+                    <div className="border-t border-gray-200 pt-3 mt-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Input
+                          type="text"
+                          placeholder="Código do cupom"
+                          value={couponInput}
+                          onChange={(e) => setCouponInput(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={handleApplyCoupon}
+                          disabled={!couponInput.trim()}
+                        >
+                          Aplicar
+                        </Button>
                       </div>
-                    )}
+                      {couponCode && (
+                        <div className="flex items-center justify-between text-sm bg-green-50 p-2 rounded">
+                          <span className="text-green-700">
+                            Cupom {couponCode} aplicado (-{couponDiscount}%)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={removeCoupon}
+                            className="h-6 w-6 p-0 hover:bg-green-100"
+                          >
+                            <X size={14} className="text-green-700" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                     
                     <div className="border-t border-gray-200 pt-3 mt-3">
                       <div className="flex justify-between font-semibold text-lg">
                         <span>Total:</span>
-                        <span>R$ {(cartTotal + (cartTotal >= 199.9 ? 0 : 15)).toFixed(2)}</span>
+                        <span>R$ {cartTotal.toFixed(2)}</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
                         Em até 12x sem juros
@@ -188,60 +268,69 @@ const CartPage = () => {
                                   Escolher a Forma de Pagamento
                                 </span>
                               </div>
+                              {paymentMethod && (
+                                <span className="text-xs text-gray-500 mr-4">
+                                  {getPaymentMethodName(paymentMethod)}
+                                </span>
+                              )}
                             </div>
                           </AccordionTrigger>
                           <AccordionContent className="px-4 pt-2 pb-4">
-                            <div className="space-y-2">
+                            <RadioGroup 
+                              value={paymentMethod} 
+                              onValueChange={setPaymentMethod}
+                              className="space-y-2"
+                            >
                               {activePaymentMethods.credit && (
-                                <div 
-                                  className={`flex items-center p-2 rounded-md hover:bg-gray-50 cursor-pointer ${paymentMethod === 'credit' ? 'bg-gray-50 border border-gray-200' : ''}`}
-                                  onClick={() => handlePaymentMethodSelect('credit')}
-                                >
-                                  <CreditCard size={16} className="mr-2 text-gray-600" />
-                                  <span>Cartão de Crédito</span>
+                                <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                                  <RadioGroupItem value="credit" id="credit" />
+                                  <Label htmlFor="credit" className="flex items-center cursor-pointer">
+                                    <CreditCard size={16} className="mr-2 text-gray-600" />
+                                    <span>Cartão de Crédito</span>
+                                  </Label>
                                 </div>
                               )}
                               
                               {activePaymentMethods.debit && (
-                                <div 
-                                  className={`flex items-center p-2 rounded-md hover:bg-gray-50 cursor-pointer ${paymentMethod === 'debit' ? 'bg-gray-50 border border-gray-200' : ''}`}
-                                  onClick={() => handlePaymentMethodSelect('debit')}
-                                >
-                                  <CreditCard size={16} className="mr-2 text-gray-600" />
-                                  <span>Cartão de Débito</span>
+                                <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                                  <RadioGroupItem value="debit" id="debit" />
+                                  <Label htmlFor="debit" className="flex items-center cursor-pointer">
+                                    <CreditCard size={16} className="mr-2 text-gray-600" />
+                                    <span>Cartão de Débito</span>
+                                  </Label>
                                 </div>
                               )}
                               
                               {activePaymentMethods.pix && (
-                                <div 
-                                  className={`flex items-center p-2 rounded-md hover:bg-gray-50 cursor-pointer ${paymentMethod === 'pix' ? 'bg-gray-50 border border-gray-200' : ''}`}
-                                  onClick={() => handlePaymentMethodSelect('pix')}
-                                >
-                                  <Smartphone size={16} className="mr-2 text-gray-600" />
-                                  <span>PIX</span>
+                                <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                                  <RadioGroupItem value="pix" id="pix" />
+                                  <Label htmlFor="pix" className="flex items-center cursor-pointer">
+                                    <Smartphone size={16} className="mr-2 text-gray-600" />
+                                    <span>PIX</span>
+                                  </Label>
                                 </div>
                               )}
                               
                               {activePaymentMethods.cash && (
-                                <div 
-                                  className={`flex items-center p-2 rounded-md hover:bg-gray-50 cursor-pointer ${paymentMethod === 'cash' ? 'bg-gray-50 border border-gray-200' : ''}`}
-                                  onClick={() => handlePaymentMethodSelect('cash')}
-                                >
-                                  <CircleDollarSign size={16} className="mr-2 text-gray-600" />
-                                  <span>Dinheiro</span>
+                                <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                                  <RadioGroupItem value="cash" id="cash" />
+                                  <Label htmlFor="cash" className="flex items-center cursor-pointer">
+                                    <CircleDollarSign size={16} className="mr-2 text-gray-600" />
+                                    <span>Dinheiro</span>
+                                  </Label>
                                 </div>
                               )}
                               
                               {activePaymentMethods.other && (
-                                <div 
-                                  className={`flex items-center p-2 rounded-md hover:bg-gray-50 cursor-pointer ${paymentMethod === 'other' ? 'bg-gray-50 border border-gray-200' : ''}`}
-                                  onClick={() => handlePaymentMethodSelect('other')}
-                                >
-                                  <span className="flex justify-center items-center w-4 h-4 mr-2 rounded-full border border-gray-600 text-xs">?</span>
-                                  <span>Outro</span>
+                                <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                                  <RadioGroupItem value="other" id="other" />
+                                  <Label htmlFor="other" className="flex items-center cursor-pointer">
+                                    <span className="flex justify-center items-center w-4 h-4 mr-2 rounded-full border border-gray-600 text-xs">?</span>
+                                    <span>Outro</span>
+                                  </Label>
                                 </div>
                               )}
-                            </div>
+                            </RadioGroup>
                           </AccordionContent>
                         </AccordionItem>
                       </Accordion>

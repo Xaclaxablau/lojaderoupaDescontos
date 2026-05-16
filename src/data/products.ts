@@ -1,6 +1,8 @@
 import { Product } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { syncProductsFromSupabase } from '@/lib/supabaseSync';
+import { normalizeCategory } from '@/lib/categoryUtils';
+import phpserver from '@/lib/phpserver';
 
 // Mock product images - in a real app, you'd use actual product images
 const mockImageBase = [
@@ -15,7 +17,7 @@ const mockImageBase = [
 ];
 
 // Mock products array (used as fallback)
-export const mockProducts: Product[] = [
+export const mockProducts = [
   // Feminino
   {
     id: "f1",
@@ -304,11 +306,13 @@ export const mockProducts: Product[] = [
 ];
 
 // Função para carregar produtos do localStorage
-export const getProductsFromLocalStorage = (): Product[] => {
+export const getProductsFromLocalStorage = async () => {
   try {
-    const storedProducts = localStorage.getItem('products');
+
+    const storedProducts = await phpserver().getProducts();
     if (storedProducts) {
-      const parsedProducts = JSON.parse(storedProducts);
+      const parsedProducts = storedProducts;
+      console.log(`✅ ${parsedProducts.length} produtos carregados do localStorage`);
       return parsedProducts;
     }
   } catch (error) {
@@ -324,7 +328,7 @@ export const saveProductsToLocalStorage = (products: Product[]) => {
       console.error('Tentativa de salvar produtos inválidos no localStorage:', products);
       return false;
     }
-    
+
     // Garantir que todos os objetos são do tipo Product com validação
     const validProducts = products.filter(p => {
       if (!p || typeof p !== 'object' || !p.id || !p.name) {
@@ -333,18 +337,18 @@ export const saveProductsToLocalStorage = (products: Product[]) => {
       }
       return true;
     });
-    
+
     localStorage.setItem('products', JSON.stringify(validProducts));
-    
+
     // Disparar evento para notificar outras partes da aplicação
     window.dispatchEvent(new Event('storage'));
-    
+
     // Registrar ação para debug
     console.log(`✅ ${validProducts.length} produtos salvos no localStorage`);
-    
+
     // Registrar timestamp da última sincronização
     localStorage.setItem('products_last_sync', Date.now().toString());
-    
+
     return true;
   } catch (error) {
     console.error('Erro ao salvar produtos no localStorage:', error);
@@ -357,10 +361,10 @@ export const shouldSyncProducts = (): boolean => {
   try {
     const lastSync = localStorage.getItem('products_last_sync');
     if (!lastSync) return true;
-    
+
     const lastSyncTime = parseInt(lastSync);
     const now = Date.now();
-    
+
     // Sincronizar se a última sincronização foi há mais de 5 minutos
     const fiveMinutes = 5 * 60 * 1000;
     return (now - lastSyncTime) > fiveMinutes;
@@ -371,29 +375,10 @@ export const shouldSyncProducts = (): boolean => {
 };
 
 // Função para buscar todos os produtos (com verificação de sincronização)
-export const getAllProducts = (): Product[] => {
+export const getAllProducts = () => {
   // Verifique se há dados no localStorage primeiro
   const localProducts = getProductsFromLocalStorage();
-  
-  // Se tiver produtos locais e o navegador estiver online, verificamos no componente se precisamos sincronizar
-  if (navigator.onLine) {
-    // Se já tiver produtos locais, retorna para agilizar o carregamento
-    // A sincronização atual é feita no componente com useEffect/syncProducts
-    return localProducts;
-  } else {
-    // Se offline, retornar produtos locais
-    console.log('📱 Dispositivo offline, usando dados locais');
-    return localProducts;
-  }
-};
-
-// Helper function to normalize category strings (lowercase, remove accents)
-const normalizeCategory = (categoryStr: string) => {
-  if (!categoryStr) return '';
-  return categoryStr
-    .toLowerCase()
-    .normalize("NFD") // Decompose accented characters
-    .replace(/[\u0300-\u036f]/g, ""); // Remove diacritical marks
+  return localProducts;
 };
 
 /**

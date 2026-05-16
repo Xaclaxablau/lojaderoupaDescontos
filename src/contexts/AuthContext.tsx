@@ -1,16 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getAnonymousUserId } from '@/lib/supabase';
-
+import phpserver from '@/lib/phpserver';
 // Definir a interface do contexto de autenticação
 interface AuthContextType {
-  session: Session | null;
   user: any;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ error?: any }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
   userId: string | null;
@@ -34,9 +30,20 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Função para gerar um userId anônimo
+const getAnonymousUserId = (): string => {
+  let userId = localStorage.getItem('anonymous_user_id');
+
+  if (!userId) {
+    userId = `anon_${Math.random().toString(36).substring(2, 15)}`;
+    localStorage.setItem('anonymous_user_id', userId);
+  }
+
+  return userId;
+};
+
 // Componente provedor
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -52,54 +59,66 @@ export function AuthProvider({ children }: AuthProviderProps) {
   });
   const navigate = useNavigate();
 
+  // Verificar se já existe um usuário autenticado no localStorage
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        
-        // Verificar se o usuário é admin (ajuste conforme sua lógica)
-        if (session?.user?.email === 'admin@example.com') {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-        }
-      }
-    );
+    const storedUser = localStorage.getItem('auth_user');
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
 
-    return () => {
-      subscription.unsubscribe();
-    };
+      // Verificar se o usuário é admin
+      if (parsedUser.email === 'admin@exemplo.com' || parsedUser.email === 'marcos.rherculano@gmail.com') {
+        setIsAdmin(true);
+      }
+    }
+    setLoading(false);
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Validação simplificada - em produção isto seria feito no backend
+      var user = await phpserver().login(email, password);
+      console.log(user);
+      if (user && user.id) {
+        const mockUser = {
+          id: user.id,
+          email,
+          role: 'admin'
+        };
 
-      if (error) {
-        toast.error(error.message);
-        throw error;
+        // Salvar no localStorage
+        localStorage.setItem('auth_user', JSON.stringify(mockUser));
+        localStorage.setItem('auth_token', 'mock-token-' + Date.now());
+
+        setUser(mockUser);
+        setIsAdmin(true);
+
+        return {};
       }
+      /* if ((email === 'admin@exemplo.com' && password === 'senha123') ||
+         (email === 'marcos.rherculano@gmail.com' && password === 'markinhos123')) {
+       
+       }*/
 
-      navigate('/admin');
+      // Se as credenciais não forem válidas
+      toast.error('Email ou senha inválidos');
+      return { error: 'Credenciais inválidas' };
     } catch (error) {
       console.error('Erro de login:', error);
-      throw error;
+      return { error };
     }
   };
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        toast.error(error.message);
-        throw error;
-      }
+      // Remover do localStorage
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('auth_token');
+
+      setUser(null);
+      setIsAdmin(false);
       navigate('/login');
+      return;
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
       throw error;
@@ -109,7 +128,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return (
     <AuthContext.Provider
       value={{
-        session,
         user,
         loading,
         signIn,

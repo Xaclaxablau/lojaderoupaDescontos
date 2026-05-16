@@ -43,7 +43,8 @@ export const syncProductsFromSupabase = async (): Promise<Product[]> => {
       sizes: Array.isArray(item.sizes) ? item.sizes : [],
       colors: Array.isArray(item.colors) ? item.colors : [],
       featured: !!item.featured,
-      on_sale: !!item.on_sale
+      on_sale: !!item.on_sale,
+      showOnHomepage: !!item.showOnHomepage
     }));
     
     // Salvar no localStorage

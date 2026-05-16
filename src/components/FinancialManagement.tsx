@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import phpserver from '@/lib/phpserver';
 import {
   Select,
   SelectContent,
@@ -34,17 +35,21 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Pencil, 
-  Trash2, 
-  Archive, 
+import {
+  Pencil,
+  Trash2,
+  Archive,
   RefreshCcw,
   Banknote,
   CircleDashed,
   BarChart3,
   Plus
 } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
+import { formatCurrency, debounce } from '@/lib/performance';
+import { getFromStorage, saveToStorage } from '@/lib/storageOptimizer';
+
+// Função para gerar IDs únicos baseados em timestamp
+const generateId = () => `finance-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
 // Define os tipos para os registros financeiros
 interface FinancialRecord {
@@ -71,97 +76,95 @@ const FinancialManagement = () => {
   const [totalReceivable, setTotalReceivable] = useState(0);
   const [totalFixed, setTotalFixed] = useState(0);
   const [balance, setBalance] = useState(0);
-
+  const [carregando, setCarregando] = useState(true);
   // Carregar registros do localStorage
   useEffect(() => {
-    try {
-      const storedRecords = localStorage.getItem('financialRecords');
-      if (storedRecords) {
-        const parsedRecords = JSON.parse(storedRecords);
-        setRecords(parsedRecords);
+    async function syncFinanceiros() {
+      try {
+        const records = await phpserver().getFinanceiro();
+        localStorage.setItem('financialRecords', JSON.stringify(records));
+        setRecords(records);
+        setCarregando(false);
+      } catch (e) {
+        console.error('Falha ao carregar registros financeiros', e);
+        setRecords([]);
       }
-    } catch (e) {
-      console.error('Falha ao carregar registros financeiros', e);
-      setRecords([]);
     }
+    syncFinanceiros();
   }, []);
 
-  // Filtrar registros conforme a aba selecionada
-  useEffect(() => {
-    let filtered = [...records];
+  // Memoizar os registros ativos para cálculos
+  const activeRecords = useMemo(() =>
+    records.filter(r => !r.archived),
+    [records]);
 
-    if (!showArchived) {
-      filtered = filtered.filter(record => !record.archived);
-    }
+  // Filtrar registros conforme a aba selecionada (memoizado)
+  useEffect(() => {
+    let filtered = showArchived ? [...records] : [...activeRecords];
 
     if (selectedTab !== 'all') {
       filtered = filtered.filter(record => record.category === selectedTab);
     }
 
     setFilteredRecords(filtered);
-  }, [records, selectedTab, showArchived]);
+  }, [records, activeRecords, selectedTab, showArchived]);
 
-  // Calcular totais para o dashboard
+  // Calcular totais para o dashboard (memoizado)
   useEffect(() => {
-    const activeRecords = records.filter(r => !r.archived);
-    
-    // Calcular receitas (incluindo apenas receitas pagas)
+    // Memoizar os cálculos de valores financeiros
     const revenue = activeRecords
       .filter(r => r.category === 'RECEITA' && r.paid)
       .reduce((sum, record) => sum + record.amount, 0);
-      
-    // Calcular despesas (incluindo apenas despesas pagas)
+
     const expenses = activeRecords
-      .filter(r => (r.category === 'DESPESA' || r.category === 'FIXO') && r.paid)
+      .filter(r => (r.category === 'DESPESA' || r.category === 'FIXO') && !r.paid)
       .reduce((sum, record) => sum + record.amount, 0);
-      
-    // Calcular valores a receber (apenas itens não pagos)
+
     const receivable = activeRecords
       .filter(r => r.category === 'A RECEBER' && !r.paid)
       .reduce((sum, record) => sum + record.amount, 0);
-      
-    // Calcular valores fixos (inclui apenas os fixos pagos no cálculo)
+
     const fixed = activeRecords
-      .filter(r => r.category === 'FIXO' && r.paid)
+      .filter(r => r.category === 'FIXO' && !r.paid)
       .reduce((sum, record) => sum + record.amount, 0);
-    
-    // Atualizar os estados
+
+    const paidExpenses = activeRecords
+      .filter(r => (r.category === 'DESPESA' || r.category === 'FIXO') && r.paid)
+      .reduce((sum, record) => sum + record.amount, 0);
+
+    // Atualizar os estados em lote para reduzir renderizações
     setTotalRevenue(revenue);
     setTotalExpenses(expenses);
     setTotalReceivable(receivable);
     setTotalFixed(fixed);
-    
-    // Calcular o saldo (receitas - despesas)
-    // As despesas fixas já estão incluídas no cálculo de despesas
-    setBalance(revenue - expenses);
-    
-    // Log para debug
-    console.log({
-      revenue,
-      expenses,
-      receivable,
-      fixed,
-      balance: revenue - expenses
-    });
-  }, [records]);
+    setBalance(revenue - paidExpenses);
+  }, [activeRecords]);
 
-  // Salvar registros no localStorage
-  const saveRecords = (updatedRecords: FinancialRecord[]) => {
-    try {
-      localStorage.setItem('financialRecords', JSON.stringify(updatedRecords));
-      setRecords(updatedRecords);
-      toast.success('Registros financeiros atualizados');
-    } catch (e) {
-      console.error('Falha ao salvar registros financeiros', e);
-      toast.error('Erro ao salvar registros');
-    }
-  };
+  // Salvar registros no localStorage - memoizar para performance e usar debounce
+  const saveRecords = useCallback(
+    debounce(async (updatedRecords: FinancialRecord[]) => {
+      try {
+        await phpserver().updateFinanceiro(updatedRecords);
+        const success = saveToStorage('financialRecords', updatedRecords);
+        if (success) {
+          setRecords(updatedRecords);
+          toast.success('Registros financeiros atualizados');
+        } else {
+          throw new Error('Falha ao salvar no storage');
+        }
+      } catch (e) {
+        console.error('Falha ao salvar registros financeiros', e);
+        toast.error('Erro ao salvar registros');
+      }
+    }, 300), // 300ms de debounce
+    []
+  );
 
   // Adicionar novo registro
   const handleNewRecord = () => {
     const today = new Date().toISOString().slice(0, 10);
     const newRecord: FinancialRecord = {
-      id: `finance-${Date.now()}`,
+      id: generateId(),
       description: '',
       amount: 0,
       date: today,
@@ -171,7 +174,7 @@ const FinancialManagement = () => {
       archived: false,
       paid: false
     };
-    
+
     setEditingRecord(newRecord);
     setIsDialogOpen(true);
   };
@@ -185,40 +188,40 @@ const FinancialManagement = () => {
   // Salvar registro
   const handleSaveRecord = () => {
     if (!editingRecord) return;
-    
+
     // Validação básica
     if (!editingRecord.description.trim()) {
       toast.error('Descrição é obrigatória');
       return;
     }
-    
+
     if (editingRecord.amount <= 0) {
       toast.error('O valor deve ser maior que zero');
       return;
     }
-    
+
     // Se for A RECEBER e estiver marcado como pago, converter para RECEITA
     let recordToSave = { ...editingRecord };
     if (recordToSave.category === 'A RECEBER' && recordToSave.paid) {
       recordToSave.category = 'RECEITA';
       toast.info('Item "A RECEBER" foi convertido para "RECEITA" por estar marcado como pago');
     }
-    
+
     // Se for RECEITA, garantir que esteja marcado como pago
     if (recordToSave.category === 'RECEITA' && !recordToSave.paid) {
       recordToSave.paid = true;
       toast.info('Receitas são automaticamente marcadas como pagas');
     }
-    
+
     const updatedRecords = [...records];
     const existingIndex = updatedRecords.findIndex(r => r.id === recordToSave.id);
-    
+
     if (existingIndex >= 0) {
       updatedRecords[existingIndex] = recordToSave;
     } else {
       updatedRecords.push(recordToSave);
     }
-    
+
     saveRecords(updatedRecords);
     setIsDialogOpen(false);
     setEditingRecord(null);
@@ -228,13 +231,13 @@ const FinancialManagement = () => {
   const handleArchiveRecord = (id: string) => {
     const updatedRecords = [...records];
     const index = updatedRecords.findIndex(r => r.id === id);
-    
+
     if (index >= 0) {
       updatedRecords[index] = {
         ...updatedRecords[index],
         archived: true
       };
-      
+
       saveRecords(updatedRecords);
       toast.success('Registro arquivado');
     }
@@ -244,13 +247,13 @@ const FinancialManagement = () => {
   const handleRestoreRecord = (id: string) => {
     const updatedRecords = [...records];
     const index = updatedRecords.findIndex(r => r.id === id);
-    
+
     if (index >= 0) {
       updatedRecords[index] = {
         ...updatedRecords[index],
         archived: false
       };
-      
+
       saveRecords(updatedRecords);
       toast.success('Registro restaurado');
     }
@@ -269,14 +272,14 @@ const FinancialManagement = () => {
   const handleTogglePaid = (id: string) => {
     const record = records.find(r => r.id === id);
     if (!record) return;
-    
+
     let updatedRecord = { ...record, paid: !record.paid };
-    
+
     // Se for A RECEBER e estiver sendo marcado como pago, converter para RECEITA
     if (record.category === 'A RECEBER' && !record.paid) {
       updatedRecord.category = 'RECEITA';
       toast.success(`${record.description} foi marcado como pago e convertido para RECEITA`);
-    } 
+    }
     // Se for RECEITA e estiver sendo desmarcado como pago, não permitir
     else if (record.category === 'RECEITA' && record.paid) {
       toast.error('Receitas não podem ser marcadas como não pagas');
@@ -290,35 +293,35 @@ const FinancialManagement = () => {
         toast.success(`${record.description} foi marcado como não pago`);
       }
     }
-    
-    const updatedRecords = records.map(r => 
+
+    const updatedRecords = records.map(r =>
       r.id === id ? updatedRecord : r
     );
-    
+
     saveRecords(updatedRecords);
   };
 
-  // Formata valores em moeda
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
-  };
-
+  if (carregando) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen bg-white text-gray-700">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-lg font-semibold">Aguarde um momento...</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <h2 className="text-2xl font-bold">Gerenciamento Financeiro</h2>
         <div className="flex items-center gap-2">
-          <Button 
+          <Button
             onClick={handleNewRecord}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Plus size={16} className="mr-2" />
             Novo Registro
           </Button>
-          <Button 
+          <Button
             variant="outline"
             onClick={() => setShowArchived(!showArchived)}
             className="border-blue-600 text-blue-600"
@@ -327,7 +330,7 @@ const FinancialManagement = () => {
           </Button>
         </div>
       </div>
-      
+
       {/* Dashboard simples */}
       <div className="grid grid-cols-2 gap-4">
         <Card>
@@ -344,7 +347,7 @@ const FinancialManagement = () => {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{formatCurrency(totalExpenses)}</p>
-            <p className="text-xs text-gray-500">(incluindo fixos pagos)</p>
+            <p className="text-xs text-gray-500">(apenas despesas não pagas)</p>
           </CardContent>
         </Card>
         <Card>
@@ -363,11 +366,11 @@ const FinancialManagement = () => {
             <p className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(balance)}
             </p>
-            <p className="text-xs text-gray-500">Receitas - Despesas</p>
+            <p className="text-xs text-gray-500">Receitas - Despesas pagas</p>
           </CardContent>
         </Card>
       </div>
-      
+
       <Tabs defaultValue="all" onValueChange={setSelectedTab}>
         <TabsList className="mb-4 flex flex-wrap w-full">
           <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm">Todos</TabsTrigger>
@@ -376,7 +379,7 @@ const FinancialManagement = () => {
           <TabsTrigger value="FIXO" className="flex-1 min-w-[60px] text-xs sm:text-sm">Fixos</TabsTrigger>
           <TabsTrigger value="A RECEBER" className="flex-1 min-w-[60px] text-xs sm:text-sm">A Receber</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value={selectedTab} className="mt-0">
           <Accordion type="single" collapsible defaultValue="records">
             <AccordionItem value="records">
@@ -420,9 +423,9 @@ const FinancialManagement = () => {
                                     variant="outline"
                                     className={
                                       record.category === 'RECEITA' ? 'bg-green-50 text-green-600 border-green-200' :
-                                      record.category === 'DESPESA' ? 'bg-red-50 text-red-600 border-red-200' :
-                                      record.category === 'FIXO' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                      'bg-yellow-50 text-yellow-600 border-yellow-200'
+                                        record.category === 'DESPESA' ? 'bg-red-50 text-red-600 border-red-200' :
+                                          record.category === 'FIXO' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                            'bg-yellow-50 text-yellow-600 border-yellow-200'
                                     }
                                   >
                                     {record.category}
@@ -433,7 +436,7 @@ const FinancialManagement = () => {
                                     {formatCurrency(record.amount)} • {format(new Date(record.date), 'dd/MM/yyyy')}
                                   </div>
                                   <div className="flex items-center mt-1">
-                                    <Badge 
+                                    <Badge
                                       variant={record.paid ? "default" : "outline"}
                                       className="text-xs mr-2"
                                     >
@@ -451,7 +454,7 @@ const FinancialManagement = () => {
                             </TableCell>
                             <TableCell className="hidden md:table-cell">{formatCurrency(record.amount)}</TableCell>
                             <TableCell className="hidden md:table-cell">
-                              <Badge 
+                              <Badge
                                 variant={record.paid ? "default" : "outline"}
                                 className="cursor-pointer"
                                 onClick={() => handleTogglePaid(record.id)}
@@ -461,15 +464,15 @@ const FinancialManagement = () => {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex space-x-2 justify-end">
-                                <Button 
-                                  variant="outline" 
-                                  size="icon" 
+                                <Button
+                                  variant="outline"
+                                  size="icon"
                                   onClick={() => handleTogglePaid(record.id)}
                                   disabled={record.archived || (record.category === 'RECEITA' && record.paid)}
                                   title={
                                     record.archived ? "Não é possível alterar status de arquivados" :
-                                    (record.category === 'RECEITA' && record.paid) ? "Receitas não podem ser desmarcadas como pagas" : 
-                                    record.paid ? "Marcar como não pago" : "Marcar como pago"
+                                      (record.category === 'RECEITA' && record.paid) ? "Receitas não podem ser desmarcadas como pagas" :
+                                        record.paid ? "Marcar como não pago" : "Marcar como pago"
                                   }
                                 >
                                   {record.paid ? <Banknote className="h-4 w-4 text-green-500" /> : <CircleDashed className="h-4 w-4" />}
@@ -522,7 +525,7 @@ const FinancialManagement = () => {
           </Accordion>
         </TabsContent>
       </Tabs>
-      
+
       {/* Dialog para adicionar/editar registro */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -537,7 +540,7 @@ const FinancialManagement = () => {
               Preencha os detalhes do registro financeiro abaixo.
             </DialogDescription>
           </DialogHeader>
-          
+
           {editingRecord && (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
@@ -548,15 +551,15 @@ const FinancialManagement = () => {
                   value={editingRecord.category}
                   onValueChange={(value: any) => {
                     // Alterar categoria e atualizar status de pagamento conforme regras
-                    const newPaid = value === 'RECEITA' ? true : 
-                                   (value === 'A RECEBER' ? false : editingRecord.paid);
-                    
+                    const newPaid = value === 'RECEITA' ? true :
+                      (value === 'A RECEBER' ? false : editingRecord.paid);
+
                     setEditingRecord({
                       ...editingRecord,
                       category: value,
                       paid: newPaid
                     });
-                    
+
                     if (value === 'RECEITA') {
                       toast.info('Receitas são automaticamente marcadas como pagas');
                     } else if (value === 'A RECEBER') {
@@ -575,7 +578,7 @@ const FinancialManagement = () => {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">
                   Descrição*
@@ -583,7 +586,7 @@ const FinancialManagement = () => {
                 <Input
                   id="description"
                   value={editingRecord.description}
-                  onChange={(e) => 
+                  onChange={(e) =>
                     setEditingRecord({
                       ...editingRecord,
                       description: e.target.value
@@ -592,7 +595,7 @@ const FinancialManagement = () => {
                   className="col-span-3"
                 />
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="amount" className="text-right">
                   Valor*
@@ -603,7 +606,7 @@ const FinancialManagement = () => {
                   step="0.01"
                   min="0"
                   value={editingRecord.amount}
-                  onChange={(e) => 
+                  onChange={(e) =>
                     setEditingRecord({
                       ...editingRecord,
                       amount: parseFloat(e.target.value) || 0
@@ -612,7 +615,7 @@ const FinancialManagement = () => {
                   className="col-span-3"
                 />
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="date" className="text-right">
                   Data*
@@ -621,7 +624,7 @@ const FinancialManagement = () => {
                   id="date"
                   type="date"
                   value={editingRecord.date}
-                  onChange={(e) => 
+                  onChange={(e) =>
                     setEditingRecord({
                       ...editingRecord,
                       date: e.target.value
@@ -630,7 +633,7 @@ const FinancialManagement = () => {
                   className="col-span-3"
                 />
               </div>
-              
+
               {(editingRecord.category === 'DESPESA' || editingRecord.category === 'FIXO' || editingRecord.category === 'A RECEBER') && (
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="dueDate" className="text-right">
@@ -640,7 +643,7 @@ const FinancialManagement = () => {
                     id="dueDate"
                     type="date"
                     value={editingRecord.dueDate || ''}
-                    onChange={(e) => 
+                    onChange={(e) =>
                       setEditingRecord({
                         ...editingRecord,
                         dueDate: e.target.value
@@ -650,7 +653,7 @@ const FinancialManagement = () => {
                   />
                 </div>
               )}
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="paid" className="text-right">
                   Status
@@ -660,7 +663,7 @@ const FinancialManagement = () => {
                     type="checkbox"
                     id="paid"
                     checked={editingRecord.paid}
-                    onChange={(e) => 
+                    onChange={(e) =>
                       setEditingRecord({
                         ...editingRecord,
                         paid: e.target.checked
@@ -669,14 +672,14 @@ const FinancialManagement = () => {
                     className="h-4 w-4 rounded border-gray-300"
                   />
                   <Label htmlFor="paid" className="text-sm font-normal">
-                    {editingRecord.category === 'RECEITA' || editingRecord.category === 'A RECEBER' 
-                      ? 'Recebido' 
+                    {editingRecord.category === 'RECEITA' || editingRecord.category === 'A RECEBER'
+                      ? 'Recebido'
                       : 'Pago'
                     }
                   </Label>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="notes" className="text-right">
                   Observações
@@ -684,7 +687,7 @@ const FinancialManagement = () => {
                 <Textarea
                   id="notes"
                   value={editingRecord.notes || ''}
-                  onChange={(e) => 
+                  onChange={(e) =>
                     setEditingRecord({
                       ...editingRecord,
                       notes: e.target.value
@@ -696,7 +699,7 @@ const FinancialManagement = () => {
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancelar

@@ -9,7 +9,7 @@ interface MetaTagsProps {
 
 const MetaTags: React.FC<MetaTagsProps> = ({ title, description, image }) => {
   // Usar uma URL padrão quando nenhuma imagem estiver definida
-  const defaultImage = 'https://lovable.dev/opengraph-image-p98pqg.png';
+  const defaultImage = '/opengraph-image.png';
   
   // Verificar se a imagem está em formato base64 (o que não funciona para compartilhamento)
   const isBase64Image = image && image.startsWith('data:');

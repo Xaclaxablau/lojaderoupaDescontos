@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Star } from 'lucide-react';
+import { ShoppingCart, Star, Share2 } from 'lucide-react';
 import { Product } from '@/types';
 import { useCart } from '@/contexts/CartContext';
 import { Button } from './ui/button';
@@ -45,26 +45,46 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       e.preventDefault();
       e.stopPropagation();
       
-      if (!product.sizes || product.sizes.length === 0) {
-        toast.error("Produto sem tamanhos disponíveis");
-        return;
-      }
-      
-      // Selecionar o primeiro tamanho e cor disponíveis por padrão
-      const defaultSize = product.sizes[0];
-      const defaultColor = product.colors && product.colors.length > 0 ? product.colors[0] : '';
-      
-      addToCart({
+      // Criar um objeto seguro para adicionar ao carrinho
+      const cartItem = {
         ...product,
         quantity: 1,
-        selectedSize: defaultSize,
-        selectedColor: defaultColor
-      });
+        selectedSize: product.sizes && product.sizes.length > 0 ? product.sizes[0] : 'Único',
+        selectedColor: product.colors && product.colors.length > 0 ? product.colors[0] : 'Padrão'
+      };
       
+      addToCart(cartItem);
       toast.success(`${name} adicionado ao carrinho`);
     } catch (error) {
       console.error('Erro ao adicionar ao carrinho:', error);
       toast.error('Não foi possível adicionar o produto ao carrinho');
+    }
+  };
+
+  // Função para compartilhar produto
+  const handleShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const productUrl = `${window.location.origin}/product/${id}`;
+    const shareText = `Confira este produto incrível: ${name} - ${productUrl}`;
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: name,
+          text: shareText,
+          url: productUrl
+        });
+        toast.success('Produto compartilhado com sucesso!');
+      } else {
+        // Fallback para copiar o link
+        await navigator.clipboard.writeText(shareText);
+        toast.success('Link copiado para a área de transferência!');
+      }
+    } catch (error) {
+      console.error('Erro ao compartilhar:', error);
+      toast.error('Não foi possível compartilhar o produto');
     }
   };
 
@@ -136,17 +156,27 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           to={`/product/${id}`} 
           className="mt-2 text-sm text-blue-600 hover:text-blue-800 hover:underline"
         >
-          Escolher tamanho
+          Editar
         </Link>
       </div>
       
-      <button
-        onClick={handleAddToCart}
-        className="absolute bottom-3 right-3 z-10 bg-shop-red text-white p-2 rounded-full shadow-sm transition-transform hover:scale-110"
-        aria-label="Adicionar ao carrinho"
-      >
-        <ShoppingCart size={16} />
-      </button>
+      <div className="absolute bottom-3 right-3 z-10 flex gap-2">
+        <button
+          onClick={handleShare}
+          className="bg-gray-100 text-gray-600 p-2 rounded-full shadow-sm transition-transform hover:scale-110 hover:bg-gray-200"
+          aria-label="Compartilhar este produto"
+          title="Compartilhar este produto"
+        >
+          <Share2 size={16} />
+        </button>
+        <button
+          onClick={handleAddToCart}
+          className="bg-shop-red text-white p-2 rounded-full shadow-sm transition-transform hover:scale-110"
+          aria-label="Adicionar ao carrinho"
+        >
+          <ShoppingCart size={16} />
+        </button>
+      </div>
     </Link>
   );
 };

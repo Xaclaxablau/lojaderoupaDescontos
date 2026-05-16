@@ -55,7 +55,7 @@ const CartItem: React.FC<CartItemProps> = ({ item }) => {
           to={`/product/${item.id}`} 
           className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
         >
-          Escolher tamanho
+          Editar
         </Link>
 
         <div className="flex items-center justify-between text-sm mt-auto pt-2">

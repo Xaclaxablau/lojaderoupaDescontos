@@ -27,11 +27,7 @@ const Login = () => {
     setIsLoading(true);
     
     try {
-      // Se email ou senha estiverem vazios, use as credenciais de teste
-      const loginEmail = email.trim() || 'admin@exemplo.com';
-      const loginPassword = password || 'senha123';
-
-      const { error } = await signIn(loginEmail, loginPassword);
+      const { error } = await signIn(email.trim(), password);
       
       if (!error) {
         // Redirecionar para a página protegida que o usuário tentou acessar (se houver)
@@ -69,15 +65,13 @@ const Login = () => {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@exemplo.com"
+                  placeholder="Digite seu email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
+                  required
                 />
               </div>
-              <p className="text-xs text-gray-500">
-                Para teste, deixe vazio e usaremos as credenciais padrão.
-              </p>
             </div>
             
             <div className="space-y-2">
@@ -91,11 +85,9 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
+                  required
                 />
               </div>
-              <p className="text-xs text-gray-500">
-                Para teste, deixe vazio e usaremos a senha padrão.
-              </p>
             </div>
             
             <Button type="submit" className="w-full" disabled={isLoading}>

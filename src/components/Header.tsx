@@ -8,6 +8,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Product } from '@/types';
 import { getAllProducts } from '@/data/products';
 import { useAuth } from '@/contexts/AuthContext';
+import { getStoreSettings } from '@/lib/localStorage';
+import { getNormalizedLink } from '@/lib/categoryUtils';
+import phpserver from '@/lib/phpserver';
 
 // Define settings interface
 interface StoreSettings {
@@ -35,6 +38,12 @@ interface StoreSettings {
   storeNameColor?: string;
   headerColor?: string;
   headerLinkColor?: string;
+  aboutUs?: {
+    enabled: boolean;
+    title: string;
+    content: string;
+    images: string[];
+  };
 }
 
 // Default settings
@@ -59,7 +68,13 @@ const defaultSettings: StoreSettings = {
   storeNameFont: 'Arial',
   storeNameColor: '#000000',
   headerColor: '#FFFFFF',
-  headerLinkColor: '#000000'
+  headerLinkColor: '#000000',
+  aboutUs: {
+    enabled: false,
+    title: 'Quem Somos',
+    content: '',
+    images: []
+  }
 };
 
 // Helper function for simple deep merging (you might already have this)
@@ -89,99 +104,103 @@ const deepMerge = (target: any, source: any): any => {
   return output;
 };
 
-// Get settings from localStorage using deep merge
-const getStoredSettings = (): StoreSettings => {
-  let storedSettingsJson: string | null = null;
-  if (typeof window !== 'undefined') {
-    storedSettingsJson = localStorage.getItem('storeSettings');
+// Get settings from localStorage 
+const getHeaderSettings = () => {
+  try {
+    return getStoreSettings();
+  } catch (error) {
+    console.error('Error loading header settings:', error);
+    return defaultSettings;
   }
-
-  if (storedSettingsJson) {
-    try {
-      const storedSettings = JSON.parse(storedSettingsJson);
-      // Ensure defaultSettings includes all necessary keys, including socialMedia etc.
-      // You might need to update defaultSettings definition if it's incomplete here.
-      const completeDefaultSettings = { 
-        /* ... include all default properties like storeName, bannerConfig, headerLinks, footerText, categoryHighlights, socialMedia ... */ 
-        ...defaultSettings // Assuming defaultSettings is complete
-      };
-      return deepMerge(completeDefaultSettings, storedSettings) as StoreSettings;
-      } catch (e) {
-      console.error('Failed to parse stored settings in Header, using defaults.', e);
-      return { ...defaultSettings }; 
-    }
-  }
-  return { ...defaultSettings }; 
 };
 
 // Function to convert text to URL-friendly format
-const normalizeForUrl = (text: string): string => {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-};
+// const normalizeForUrl = (text: string): string => {
+//   return text
+//     .toLowerCase()
+//     .normalize("NFD")
+//     .replace(/[\u0300-\u036f]/g, "")
+//     .replace(/\s+/g, "-")
+//     .replace(/[^a-z0-9-]/g, "");
+// };
+
+// Helper function for link styles
+const getLinkStyle = (settings: StoreSettings | null) => ({
+  color: settings?.headerLinkColor || defaultSettings.headerLinkColor
+});
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { cart } = useCart();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
-  const [settings, setSettings] = useState<StoreSettings>(() => getStoredSettings()); // Load settings initially
-  const location = useLocation(); // Get current location
-  const navigate = useNavigate(); // For navigation
+  const [settings, setSettings] = useState(getHeaderSettings());
+  const location = useLocation();
+  const navigate = useNavigate();
   const searchResultsRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
+
   // New state for search results
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  
+
   const { user, signOut } = useAuth();
-  
+
+  useEffect(() => {
+    const carregarSettings = async () => {
+      const dados = await phpserver().getStoreSettings();
+      localStorage.setItem('storeSettings', JSON.stringify(dados));
+      setSettings(dados);
+    };
+
+    carregarSettings();
+  }, []);
+
   // Load products on component mount
   useEffect(() => {
-    const products = getAllProducts();
-    setAllProducts(products);
+    const carregarAllProducts = async () => {
+      const products = await getAllProducts();
+      setAllProducts(products);
+    }
+
+    carregarAllProducts();
   }, []);
-  
+
   // Filter products based on search query
   useEffect(() => {
     if (searchQuery.trim().length > 1) {
       const lowercaseQuery = searchQuery.toLowerCase();
-      const filteredProducts = allProducts.filter(product => 
-        product.name.toLowerCase().includes(lowercaseQuery) || 
+      const filteredProducts = allProducts.filter(product =>
+        product.name.toLowerCase().includes(lowercaseQuery) ||
         product.description.toLowerCase().includes(lowercaseQuery) ||
         product.category.toLowerCase().includes(lowercaseQuery)
       );
-      setSearchResults(filteredProducts.slice(0, 5)); // Limit to 5 results
+      setSearchResults(filteredProducts); // Mostrar todos os resultados, sem limite
       setShowSearchResults(true);
     } else {
       setSearchResults([]);
       setShowSearchResults(false);
     }
   }, [searchQuery, allProducts]);
-  
+
   // Close search results when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
-        searchResultsRef.current && 
-        searchInputRef.current && 
+        searchResultsRef.current &&
+        searchInputRef.current &&
         !searchResultsRef.current.contains(event.target as Node) &&
         !searchInputRef.current.contains(event.target as Node)
       ) {
         setShowSearchResults(false);
       }
     }
-    
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  
+
   const cartItemCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   useEffect(() => {
@@ -189,7 +208,7 @@ const Header = () => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'storeSettings') {
         console.log("Header detected settings change, reloading..."); // Debug log
-        setSettings(getStoredSettings()); // Reload settings using the robust function
+        setSettings(getHeaderSettings()); // Reload settings using the robust function
       }
     };
 
@@ -204,14 +223,25 @@ const Header = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // Navigate to products page with search query
+    // Em vez de navegar para uma nova página, mostrar os resultados filtrados na página atual
     if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
-      setShowSearchResults(false);
+      // Filtrar todos os produtos com base na consulta de pesquisa
+      const lowercaseQuery = searchQuery.toLowerCase();
+      const filteredProducts = allProducts.filter(product =>
+        product.name.toLowerCase().includes(lowercaseQuery) ||
+        product.description.toLowerCase().includes(lowercaseQuery) ||
+        product.category.toLowerCase().includes(lowercaseQuery)
+      );
+      setSearchResults(filteredProducts); // Mostrar todos os resultados, sem limite
+      setShowSearchResults(true);
+
+      // Focar no campo de pesquisa para mostrar os resultados
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
     }
   };
-  
+
   const handleProductClick = (productId: string) => {
     navigate(`/product/${productId}`);
     setSearchQuery('');
@@ -219,44 +249,288 @@ const Header = () => {
   };
 
   const getLinkClass = (path: string) => {
-    // Check if the current location pathname starts with the link's path
-    // Using startsWith allows matching for nested routes (e.g., /products/feminino should match /products)
-    // Exact match for '/' homepage
-    
     // Decode URI components to handle special characters like "ç" in "calçados"
     const decodedPath = decodeURIComponent(path.toLowerCase());
     const decodedLocationPath = decodeURIComponent(location.pathname.toLowerCase());
-    
-    const isActive = path === '/' 
-      ? decodedLocationPath === decodedPath 
+
+    const isActive = path === '/'
+      ? decodedLocationPath === decodedPath
       : decodedLocationPath.startsWith(decodedPath);
-      
+
     return isActive
-      ? 'px-1 py-1 font-semibold underline-offset-4 underline' // Active style without color
-      : 'px-1 py-1 hover:underline'; // Default style without color
+      ? 'px-1 py-1 font-semibold underline-offset-4 underline' // Active style
+      : 'px-1 py-1 hover:underline'; // Default style
   };
-  
+
   const getMobileLinkClass = (path: string) => {
     // Decode URI components to handle special characters like "ç" in "calçados"
     const decodedPath = decodeURIComponent(path.toLowerCase());
     const decodedLocationPath = decodeURIComponent(location.pathname.toLowerCase());
-    
-    const isActive = path === '/' 
-      ? decodedLocationPath === decodedPath 
+
+    const isActive = path === '/'
+      ? decodedLocationPath === decodedPath
       : decodedLocationPath.startsWith(decodedPath);
-      
+
     return isActive
-      ? 'block px-2 py-1 font-semibold underline-offset-4 underline' // Active mobile style without color
-      : 'block px-2 py-1 hover:underline'; // Default mobile style without color
+      ? 'block px-2 py-1 font-semibold underline-offset-4 underline' // Active mobile style
+      : 'block px-2 py-1 hover:underline'; // Default mobile style
   };
 
   // Ensure settings and headerLinks exist before trying to access them
   const headerLinks = settings?.headerLinks || defaultSettings.headerLinks;
 
+  // Render desktop navigation links
+  const renderNavLinks = () => {
+    const linkStyle = getLinkStyle(settings);
+    return (
+      <div className="hidden md:flex space-x-4 items-center">
+        {settings?.aboutUs?.enabled && (
+          <Link
+            to="/about-us"
+            className={getLinkClass('/about-us')}
+            style={linkStyle}
+          >
+            {settings?.aboutUs.title || 'Quem Somos'}
+          </Link>
+        )}
+        {headerLinks.novidades && (
+          <Link
+            to="/products/novidades"
+            className={getLinkClass('/products/novidades')}
+            style={linkStyle}
+          >
+            Novidades
+          </Link>
+        )}
+        {headerLinks.masculino && (
+          <Link
+            to="/products/masculino"
+            className={getLinkClass('/products/masculino')}
+            style={linkStyle}
+          >
+            Masculino
+          </Link>
+        )}
+        {headerLinks.feminino && (
+          <Link
+            to="/products/feminino"
+            className={getLinkClass('/products/feminino')}
+            style={linkStyle}
+          >
+            Feminino
+          </Link>
+        )}
+        {headerLinks.kids && (
+          <Link
+            to="/products/kids"
+            className={getLinkClass('/products/kids')}
+            style={linkStyle}
+          >
+            Infantil
+          </Link>
+        )}
+        {headerLinks.calcados && (
+          <Link
+            to="/products/calcados"
+            className={getLinkClass('/products/calcados')}
+            style={linkStyle}
+          >
+            Calçados
+          </Link>
+        )}
+        {headerLinks.acessorios && (
+          <Link
+            to="/products/acessorios"
+            className={getLinkClass('/products/acessorios')}
+            style={linkStyle}
+          >
+            Acessórios
+          </Link>
+        )}
+        {headerLinks.off && (
+          <Link
+            to="/products/off"
+            className={getLinkClass('/products/off')}
+            style={linkStyle}
+          >
+            Ofertas
+          </Link>
+        )}
+        {headerLinks.customLinks?.map((link, index) =>
+          link.enabled && (
+            <Link
+              key={`custom-${index}`}
+              to={`/products/${getNormalizedLink(link.label)}`}
+              className={getLinkClass(`/products/${getNormalizedLink(link.label)}`)}
+              style={linkStyle}
+            >
+              {link.label}
+            </Link>
+          )
+        )}
+      </div>
+    );
+  };
+
+  // Render mobile navigation links
+  const renderMobileLinks = () => {
+    const linkStyle = getLinkStyle(settings);
+
+    return (
+      <div className="flex flex-col space-y-4 p-4">
+        {/* Links padrão */}
+        <Link
+          to="/"
+          className={getMobileLinkClass('/')}
+          onClick={() => setIsMenuOpen(false)}
+          style={linkStyle}
+        >
+          Home
+        </Link>
+
+        {settings?.aboutUs?.enabled && (
+          <Link
+            to="/about-us"
+            className={getMobileLinkClass('/about-us')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            {settings?.aboutUs.title || 'Quem Somos'}
+          </Link>
+        )}
+
+        {/* Links do cabeçalho - apenas os habilitados */}
+        {headerLinks.novidades && (
+          <Link
+            to="/products/novidades"
+            className={getMobileLinkClass('/products/novidades')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Novidades
+          </Link>
+        )}
+        {headerLinks.masculino && (
+          <Link
+            to="/products/masculino"
+            className={getMobileLinkClass('/products/masculino')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Masculino
+          </Link>
+        )}
+        {headerLinks.feminino && (
+          <Link
+            to="/products/feminino"
+            className={getMobileLinkClass('/products/feminino')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Feminino
+          </Link>
+        )}
+        {headerLinks.kids && (
+          <Link
+            to="/products/kids"
+            className={getMobileLinkClass('/products/kids')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Infantil
+          </Link>
+        )}
+        {headerLinks.calcados && (
+          <Link
+            to="/products/calcados"
+            className={getMobileLinkClass('/products/calcados')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Calçados
+          </Link>
+        )}
+        {headerLinks.acessorios && (
+          <Link
+            to="/products/acessorios"
+            className={getMobileLinkClass('/products/acessorios')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Acessórios
+          </Link>
+        )}
+        {headerLinks.off && (
+          <Link
+            to="/products/off"
+            className={getMobileLinkClass('/products/off')}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            Ofertas
+          </Link>
+        )}
+
+        {/* Links personalizados - apenas os habilitados */}
+        {headerLinks.customLinks?.filter(link => link.enabled).map((link, index) => (
+          <Link
+            key={`mobile-custom-${index}`}
+            to={`/products/${getNormalizedLink(link.label)}`}
+            className={getMobileLinkClass(`/products/${getNormalizedLink(link.label)}`)}
+            onClick={() => setIsMenuOpen(false)}
+            style={linkStyle}
+          >
+            {link.label}
+          </Link>
+        ))}
+
+        {/* Admin Panel e Login - Sempre por último */}
+        {user ? (
+          <>
+            <div className="flex items-center text-blue-600 hover:text-blue-800 font-medium">
+              <Link
+                to="/admin"
+                className={`${getMobileLinkClass('/admin')} flex items-center`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Settings size={18} className="mr-2" />
+                Painel de Administração
+              </Link>
+            </div>
+
+            <div className="flex items-center text-red-600 hover:text-red-800 font-medium">
+              <button
+                className="flex items-center w-full text-left"
+                onClick={() => {
+                  signOut();
+                  setIsMenuOpen(false);
+                }}
+              >
+                <LogOut size={18} className="mr-2" />
+                Sair
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center text-gray-700 hover:text-gray-900 font-medium">
+            <Link
+              to="/login"
+              className={`${getMobileLinkClass('/login')} flex items-center`}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <User size={18} className="mr-2" />
+              Entrar / Login
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="sticky top-0 z-50">
-        <header 
+        <header
           className="border-b border-gray-200"
           style={{ backgroundColor: settings?.headerColor || defaultSettings.headerColor }}
         >
@@ -264,9 +538,9 @@ const Header = () => {
             <div className="flex items-center justify-between min-h-14 md:min-h-16 py-2">
               {/* Logo */}
               <Link to="/" className="flex items-center">
-                <span 
-                  className="text-2xl md:text-3xl font-bold" 
-                  style={{ 
+                <span
+                  className="text-2xl md:text-3xl font-bold"
+                  style={{
                     fontFamily: settings?.storeNameFont || defaultSettings.storeNameFont,
                     color: settings?.storeNameColor || defaultSettings.storeNameColor
                   }}
@@ -298,42 +572,7 @@ const Header = () => {
 
               {/* Desktop Navigation */}
               <nav className="hidden md:flex md:flex-1 md:justify-center">
-                <ul className="flex flex-wrap justify-center gap-3 text-sm max-w-full" style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>
-                  {headerLinks.novidades && 
-                    <li><Link to="/products/novidades" className={getLinkClass("/products/novidades")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Novidades</Link></li>
-                  }
-                  {headerLinks.masculino && 
-                    <li><Link to="/products/masculino" className={getLinkClass("/products/masculino")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Masculino</Link></li>
-                  }
-                  {headerLinks.feminino && 
-                    <li><Link to="/products/feminino" className={getLinkClass("/products/feminino")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Feminino</Link></li>
-                  }
-                  {headerLinks.kids && 
-                    <li><Link to="/products/kids" className={getLinkClass("/products/kids")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Kids</Link></li>
-                  }
-                  {headerLinks.calcados && 
-                    <li><Link to="/products/calçados" className={getLinkClass("/products/calçados")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Calçados</Link></li>
-                  }
-                  {headerLinks.acessorios && 
-                    <li><Link to="/products/acessórios" className={getLinkClass("/products/acessórios")} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Acessórios</Link></li>
-                  }
-                  {headerLinks.off && 
-                    <li><Link to="/products/off" className={`${getLinkClass("/products/off")} font-semibold`} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>OFF</Link></li>
-                  }
-                  {headerLinks.customLinks && headerLinks.customLinks.map((link, index) => (
-                    link.enabled && (
-                      <li key={`custom-${index}`}>
-                        <Link 
-                          to={`/products/${normalizeForUrl(link.label)}`}
-                          className={getLinkClass(`/products/${normalizeForUrl(link.label)}`)}
-                          style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}
-                        >
-                          {link.label}
-                        </Link>
-                      </li>
-                    )
-                  ))}
-                </ul>
+                {renderNavLinks()}
               </nav>
 
               {/* Desktop Account, Admin, and Cart */}
@@ -380,73 +619,11 @@ const Header = () => {
         </header>
 
         {/* Mobile Menu - Directly below header, still within sticky container */}
-        <div 
-          className={`md:hidden overflow-hidden transition-all duration-300 border-b border-gray-200 ${isMenuOpen ? 'max-h-96' : 'max-h-0'}`}
+        <div
+          className={`md:hidden overflow-y-auto transition-all duration-300 border-b border-gray-200 ${isMenuOpen ? 'max-h-[80vh]' : 'max-h-0'}`}
           style={{ backgroundColor: settings?.headerColor || defaultSettings.headerColor }}
         >
-          <nav className="container mx-auto">
-            <ul className="flex flex-col space-y-3 p-4">
-              {headerLinks.novidades && 
-                <li><Link to="/products/novidades" className={getMobileLinkClass("/products/novidades")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Novidades</Link></li>
-              }
-              {headerLinks.masculino && 
-                <li><Link to="/products/masculino" className={getMobileLinkClass("/products/masculino")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Masculino</Link></li>
-              }
-              {headerLinks.feminino && 
-                <li><Link to="/products/feminino" className={getMobileLinkClass("/products/feminino")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Feminino</Link></li>
-              }
-              {headerLinks.kids && 
-                <li><Link to="/products/kids" className={getMobileLinkClass("/products/kids")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Kids</Link></li>
-              }
-              {headerLinks.calcados && 
-                <li><Link to="/products/calçados" className={getMobileLinkClass("/products/calçados")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Calçados</Link></li>
-              }
-              {headerLinks.acessorios && 
-                <li><Link to="/products/acessórios" className={getMobileLinkClass("/products/acessórios")} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>Acessórios</Link></li>
-              }
-              {headerLinks.off && 
-                <li><Link to="/products/off" className={`${getMobileLinkClass("/products/off")} font-semibold`} onClick={toggleMenu} style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}>OFF</Link></li>
-              }
-              {headerLinks.customLinks && headerLinks.customLinks.map((link, index) => (
-                link.enabled && (
-                  <li key={`mobile-custom-${index}`}>
-                    <Link 
-                      to={`/products/${normalizeForUrl(link.label)}`}
-                      className={getMobileLinkClass(`/products/${normalizeForUrl(link.label)}`)}
-                      onClick={toggleMenu}
-                      style={{ color: settings?.headerLinkColor || defaultSettings.headerLinkColor }}
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                )
-              ))}
-              <li><Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="flex items-center justify-start px-2"
-              >
-                {user ? (
-                  <div className="flex items-center justify-between w-full">
-                    <Link to="/admin" className="flex items-center" onClick={toggleMenu}>
-                      <Settings size={16} className="mr-2" />
-                      <span>Painel Admin</span>
-                    </Link>
-                    <div onClick={signOut} className="flex items-center text-red-600">
-                      <LogOut size={16} className="mr-2" />
-                      <span>Sair</span>
-                    </div>
-                  </div>
-                ) : (
-                  <Link to="/login" className="flex items-center">
-                    <User size={16} className="mr-2" />
-                    <span>Login</span>
-                  </Link>
-                )}
-              </Button></li>
-            </ul>
-          </nav>
+          {renderMobileLinks()}
         </div>
       </div>
 
@@ -464,27 +641,45 @@ const Header = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
               />
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setShowSearchResults(false);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
               <button type="submit" className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <Search className="h-4 w-4 text-gray-400" />
               </button>
-              
+
               {/* Search Results Dropdown */}
               {showSearchResults && searchResults.length > 0 && (
-                <div 
+                <div
                   ref={searchResultsRef}
-                  className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg z-50 max-h-[400px] overflow-y-auto"
+                  className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto"
                 >
+                  <div className="sticky top-0 bg-gray-50 p-2 border-b border-gray-200">
+                    <p className="text-sm font-medium">
+                      {searchResults.length} {searchResults.length === 1 ? 'resultado encontrado' : 'resultados encontrados'}
+                      para "{searchQuery}"
+                    </p>
+                  </div>
                   <ul className="divide-y divide-gray-100">
                     {searchResults.map(product => (
-                      <li 
+                      <li
                         key={product.id}
                         className="hover:bg-gray-50 cursor-pointer transition-colors"
                         onClick={() => handleProductClick(product.id)}
                       >
                         <div className="flex items-center p-3">
                           <div className="w-16 h-16 rounded bg-gray-100 mr-3 overflow-hidden flex-shrink-0">
-                            <img 
-                              src={product.imageUrl} 
+                            <img
+                              src={product.imageUrl}
                               alt={product.name}
                               className="w-full h-full object-cover"
                               onError={(e) => {
@@ -515,27 +710,13 @@ const Header = () => {
                         </div>
                       </li>
                     ))}
-                    
-                    {/* View All Results Link */}
-                    <li className="hover:bg-gray-50 cursor-pointer transition-colors">
-                      <div 
-                        className="p-3 text-center text-sm text-shop-red font-medium"
-                        onClick={() => {
-                          navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-                          setSearchQuery('');
-                          setShowSearchResults(false);
-                        }}
-                      >
-                        Ver todos os resultados
-                      </div>
-                    </li>
                   </ul>
                 </div>
               )}
-              
+
               {/* No results message */}
               {showSearchResults && searchQuery.trim().length > 1 && searchResults.length === 0 && (
-                <div 
+                <div
                   ref={searchResultsRef}
                   className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg z-50 p-4 text-center"
                 >
