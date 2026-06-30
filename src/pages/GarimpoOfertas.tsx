@@ -34,33 +34,38 @@ const GarimpoOfertas = () => {
   useEffect(() => {
     // Carregar card existente do localStorage
     async function syncIframe() {
+      try {
+        const savedCard = await phpserver().getIframe();
+        console.log(typeof savedCard);
+        if (typeof savedCard === 'object' && savedCard.id !== undefined && savedCard.id !== null && savedCard.id !== '' && savedCard.id !== 'null' && savedCard.id !== 'undefined') {
+          console.log(savedCard);
+          const parsedCard = savedCard;
+          localStorage.setItem('garimpo_card', JSON.stringify(parsedCard));
+          setCard(parsedCard);
+          // Preencher os campos com os dados existentes
 
-      const savedCard = await phpserver().getIframe();
-      console.log(typeof savedCard);
-      if (typeof savedCard === 'object' && savedCard.id !== undefined && savedCard.id !== null && savedCard.id !== '' && savedCard.id !== 'null' && savedCard.id !== 'undefined') {
-        console.log(savedCard);
-        const parsedCard = savedCard;
-        localStorage.setItem('garimpo_card', JSON.stringify(parsedCard));
-        setCard(parsedCard);
-        // Preencher os campos com os dados existentes
-
-        setImage(parsedCard.imageUrl);
-        setStoreName(parsedCard.storeName);
-        setProductName(parsedCard.productName);
-        setPrice(parsedCard.price);
-        setPhone(parsedCard.phone);
-        setInstagramUrl(parsedCard.instagramUrl || '');
-        setCarregando(false);
-        setServidor(phpserver().servidor);
-      } else {
-        setCard(null);
-        setImage('');
-        setStoreName('');
-        setProductName('');
-        setPrice('');
-        setPhone('');
-        setInstagramUrl('');
-        setIsEditing(false);
+          setImage(parsedCard.imageUrl);
+          setStoreName(parsedCard.storeName);
+          setProductName(parsedCard.productName);
+          setPrice(parsedCard.price);
+          setPhone(parsedCard.phone);
+          setInstagramUrl(parsedCard.instagramUrl || '');
+          setCarregando(false);
+          setServidor(phpserver().servidor);
+        } else {
+          setCard(null);
+          setImage('');
+          setStoreName('');
+          setProductName('');
+          setPrice('');
+          setPhone('');
+          setInstagramUrl('');
+          setIsEditing(false);
+          setCarregando(false);
+          setServidor(phpserver().servidor);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar iframe:', error);
         setCarregando(false);
         setServidor(phpserver().servidor);
       }

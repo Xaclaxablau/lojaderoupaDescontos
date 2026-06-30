@@ -401,36 +401,46 @@ const Index = () => {
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [carregando, setCarregando] = useState(true);
   useEffect(() => {
-
     // Carregar produtos do localStorage
     phpserver().syncProducts().then(() => {
       const savedProducts = localStorage.getItem('products');
       if (savedProducts) {
-        const parsedProducts = JSON.parse(savedProducts);
-        setProducts(parsedProducts);
-        setTimeout(() => {
-          setCarregando(false);
-        }, 1000)
-        // Embaralhar e definir produtos em destaque
-        const featured = parsedProducts.filter((p: any) => p.featured);
-        setFeaturedProducts(shuffleArray(featured));
+        try {
+          const parsedProducts = JSON.parse(savedProducts);
+          if (Array.isArray(parsedProducts)) {
+            setProducts(parsedProducts);
+            // Embaralhar e definir produtos em destaque
+            const featured = parsedProducts.filter((p: any) => p.featured);
+            setFeaturedProducts(shuffleArray(featured));
 
-        // Embaralhar e definir produtos em oferta (ajustado para verificar o preço original e preço com desconto)
-        const onSale = parsedProducts.filter((p: any) => {
-          // Verifica se o produto tem desconto maior que 0
-          return p.discount > 0;
-        });
-        setOnSaleProducts(shuffleArray(onSale));
+            // Embaralhar e definir produtos em oferta
+            const onSale = parsedProducts.filter((p: any) => {
+              return p.discount > 0;
+            });
+            setOnSaleProducts(shuffleArray(onSale));
+          }
+        } catch (e) {
+          console.error('Erro ao analisar produtos:', e);
+        }
       }
+      setCarregando(false);
+    }).catch((error) => {
+      console.error('Erro ao sincronizar produtos:', error);
+      setCarregando(false);
     });
-
 
     // Carregar configurações da loja
     phpserver().syncSettings().then(() => {
       const savedSettings = localStorage.getItem('storeSettings');
       if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
+        try {
+          setSettings(JSON.parse(savedSettings));
+        } catch (e) {
+          console.error('Erro ao analisar configurações:', e);
+        }
       }
+    }).catch((error) => {
+      console.error('Erro ao sincronizar configurações:', error);
     });
   }, []);
 

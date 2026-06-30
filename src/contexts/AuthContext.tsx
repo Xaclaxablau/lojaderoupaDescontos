@@ -63,12 +63,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const storedUser = localStorage.getItem('auth_user');
     if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
 
-      // Verificar se o usuário é admin
-      if (parsedUser.email === 'admin@exemplo.com' || parsedUser.email === 'marcos.rherculano@gmail.com') {
-        setIsAdmin(true);
+        // Verificar se o usuário é admin
+        if (parsedUser.email === 'admin@exemplo.com' || parsedUser.email === 'marcos.rherculano@gmail.com') {
+          setIsAdmin(true);
+        }
+      } catch (e) {
+        console.error('Erro ao analisar usuário armazenado:', e);
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('auth_token');
       }
     }
     setLoading(false);

@@ -23,8 +23,12 @@ const ProductDetails = () => {
   useEffect(() => {
     async function setting() {
       await phpserver().syncSettings();
-      setSettings(JSON.parse(localStorage.getItem('storeSettings')));
-      console.log('Configurações carregadas:', settings);
+      try {
+        const stored = localStorage.getItem('storeSettings');
+        setSettings(stored ? JSON.parse(stored) : null);
+      } catch (e) {
+        console.error('Erro ao carregar configurações:', e);
+      }
       setCarregando(false);
     }
     // Try to find the product in localStorage first
@@ -256,6 +260,7 @@ const ProductDetails = () => {
               </p>
 
               {/* Sizes */}
+              {product.sizes && product.sizes.length > 0 && (
               <div className="mb-6">
                 <h3 className="font-medium mb-2">
                   Tamanho {selectedSize ? `- ${selectedSize}` : ''}
@@ -275,9 +280,10 @@ const ProductDetails = () => {
                   ))}
                 </div>
               </div>
+              )}
 
               {/* Colors */}
-              {product.colors.length > 0 && (
+              {product.colors && product.colors.length > 0 && (
                 <div className="mb-6">
                   <h3 className="font-medium mb-2">
                     Cor {selectedColor ? `- ${selectedColor}` : ''}

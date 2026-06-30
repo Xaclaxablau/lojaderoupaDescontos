@@ -4,6 +4,8 @@ const CookieConsent = () => {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    const isInIframe = window.self !== window.top;
+    if (isInIframe) return;
     const consent = localStorage.getItem('cookieConsent');
     if (!consent) setVisible(true);
   }, []);

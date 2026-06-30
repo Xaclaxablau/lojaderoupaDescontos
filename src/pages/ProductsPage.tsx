@@ -98,7 +98,7 @@ const ProductsPage = () => {
         }
 
         // Tentar match com normalização
-        const productCategoryPath = p.category.split('/').pop() || p.category;
+        const productCategoryPath = (p.category || '').split('/').pop() || p.category || '';
         const match = productCategoryPath === urlCategoryRaw;
         if (match) {
           console.log(`Match pelo caminho encontrado para ${p.name} com categoria ${p.category}`);
@@ -125,8 +125,8 @@ const ProductsPage = () => {
       if (initialProducts.length === 0) {
         console.log(`Tentando correspondência parcial para: ${urlCategoryRaw}`);
         initialProducts = allProducts.filter(p => {
-          return p.category.toLowerCase().includes(urlCategoryRaw.toLowerCase()) ||
-            urlCategoryRaw.toLowerCase().includes(p.category.toLowerCase());
+          return (p.category || '').toLowerCase().includes(urlCategoryRaw.toLowerCase()) ||
+            urlCategoryRaw.toLowerCase().includes((p.category || '').toLowerCase());
         });
 
         console.log(`Produtos encontrados com correspondência parcial: ${initialProducts.length}`);
@@ -137,9 +137,9 @@ const ProductsPage = () => {
     if (searchQuery) {
       const lowercaseQuery = searchQuery.toLowerCase();
       initialProducts = initialProducts.filter(product =>
-        product.name.toLowerCase().includes(lowercaseQuery) ||
-        product.description.toLowerCase().includes(lowercaseQuery) ||
-        product.category.toLowerCase().includes(lowercaseQuery)
+        (product.name || '').toLowerCase().includes(lowercaseQuery) ||
+        (product.description || '').toLowerCase().includes(lowercaseQuery) ||
+        (product.category || '').toLowerCase().includes(lowercaseQuery)
       );
       console.log(`ProductsPage: Filtrando por busca: "${searchQuery}" (${initialProducts.length} resultados)`);
     }

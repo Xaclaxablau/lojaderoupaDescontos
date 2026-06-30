@@ -4,7 +4,6 @@ import { Instagram, Globe, ShoppingCart, Eye } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Helmet } from 'react-helmet';
 import phpserver from '@/lib/phpserver';
-import { saveCart } from '../lib/supabase';
 interface GarimpoCard {
   id: string;
   imageUrl: string;
@@ -24,15 +23,19 @@ const GarimpoOfertaView = () => {
     async function sincronizarCard() {
       const cardId = window.location.pathname.split('/').pop();
       if (cardId) {
-        const saveCards = await phpserver().getIframe();
-        localStorage.setItem('garimpo_cards', JSON.stringify(saveCards));
-        const savedCards = saveCards;
-        const foundCard = savedCards.id === cardId ? savedCards : null;
-        if (foundCard) {
-          setCard(foundCard);
-          setCarregando(false);
+        try {
+          const saveCards = await phpserver().getIframe();
+          localStorage.setItem('garimpo_cards', JSON.stringify(saveCards));
+          const savedCards = saveCards;
+          const foundCard = savedCards.id === cardId ? savedCards : null;
+          if (foundCard) {
+            setCard(foundCard);
+          }
+        } catch (error) {
+          console.error('Erro ao carregar card:', error);
         }
       }
+      setCarregando(false);
     }
 
     sincronizarCard();
@@ -43,6 +46,7 @@ const GarimpoOfertaView = () => {
   // }
 
   const handleWhatsAppClick = () => {
+    if (!card) return;
     const message = `Olá, gostaria de comprar ${card.productName}`;
     const encodedMessage = encodeURIComponent(message);
     window.open(`https://wa.me/${card.phone.replace(/\D/g, '')}?text=${encodedMessage}`, '_blank');
@@ -55,6 +59,14 @@ const GarimpoOfertaView = () => {
       </div>
     );
   }
+  if (!card) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen bg-white text-gray-700">
+        <p className="text-lg font-semibold">Card não encontrado</p>
+      </div>
+    );
+  }
+
   return (
     <>
       <Helmet>

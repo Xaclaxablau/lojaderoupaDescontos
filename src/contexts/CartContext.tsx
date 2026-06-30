@@ -33,7 +33,16 @@ export const useCart = () => useContext(CartContext);
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>(() => {
     const storedCart = localStorage.getItem('cart');
-    return storedCart ? JSON.parse(storedCart) : [];
+    if (storedCart) {
+      try {
+        const parsed = JSON.parse(storedCart);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.error('Erro ao carregar carrinho:', e);
+        localStorage.removeItem('cart');
+      }
+    }
+    return [];
   });
 
   const [couponCode, setCouponCode] = useState<string | null>(() => {
@@ -130,7 +139,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applyCoupon = (code: string): boolean => {
     // Get store coupons from localStorage
     const storedCoupons = localStorage.getItem('storeCoupons');
-    const storeCoupons = storedCoupons ? JSON.parse(storedCoupons) : [];
+    let storeCoupons: Array<{ code: string; discount: number }> = [];
+    if (storedCoupons) {
+      try {
+        const parsed = JSON.parse(storedCoupons);
+        storeCoupons = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.error('Erro ao carregar cupons:', e);
+      }
+    }
 
     // Find the coupon
     const coupon = storeCoupons.find((c: { code: string; discount: number }) => 
